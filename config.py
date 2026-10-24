@@ -321,7 +321,7 @@ def validate_config() -> None:
 if __name__ == "__main__":
     validate_config()
     print("STM PRO BOT configuration is valid.")
-class Config:
+class config:
     TELEGRAM_BOT_TOKEN = TELEGRAM_BOT_TOKEN
 
     CHANNEL_ID = CHANNEL_ID
