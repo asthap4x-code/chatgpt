@@ -1,0 +1,7 @@
+python-telegram-bot==22.8
+pandas==2.3.3
+numpy==2.3.4
+pandas-ta-classic==0.3.54
+python-dotenv==1.1.1
+pytest==8.4.2
+# Optional live adapter: install pyquotex separately after reviewing its current docs/version.
