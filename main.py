@@ -1,6 +1,7 @@
 import asyncio,logging,os
 from telegram.ext import ApplicationBuilder
-from config import config
+import config
+settings = config.from_env()
 from logging_config import configure_logging
 from database import Database
 from data_provider import MockProvider,PyQuotexAdapter
