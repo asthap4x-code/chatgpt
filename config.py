@@ -372,6 +372,6 @@ class config:
     RANDOM_STRATEGY_TEST_ONLY = RANDOM_STRATEGY_TEST_ONLY
 
     validate = staticmethod(validate_config)
-    def from_env():
+def from_env():
     validate_config()
     return __import__(__name__)
