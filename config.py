@@ -1,60 +1,323 @@
-"""Environment-backed configuration; never logs secret values."""
-from dataclasses import dataclass
-from pathlib import Path
 import os
+from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from dotenv import load_dotenv
+
+# ==================================================
+# STM PRO BOT - Configuration
+# ==================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+
+# Load local .env without overriding hosting secrets.
+load_dotenv(BASE_DIR / ".env", override=False)
 
 
-def _csv_ints(value: str) -> frozenset[int]:
-    try: return frozenset(int(x.strip()) for x in value.split(',') if x.strip())
-    except ValueError as exc: raise ValueError("ADMIN_IDS must be comma-separated numeric Telegram IDs") from exc
+def get_env(name: str, default: str = "") -> str:
+    """Read and normalize an environment variable."""
+    return os.getenv(name, default).strip()
 
-@dataclass(frozen=True)
-class Config:
-    bot_token: str
-    channel_id: str
-    channel_username: str
-    channel_url: str
-    signal_channel_id: str
-    admin_ids: frozenset[int]
-    admin_username: str
-    feedback_contact: str
-    referral_url: str
-    payout_threshold: int
-    timezone: str
-    scan_interval: float
-    database_path: str
-    provider_mode: str
-    quotex_email: str
-    quotex_password: str
-    max_concurrency: int
-    max_data_age_seconds: int
-    cooldown_hours: int
-    recovery_classification: bool
-    mock_mode: bool
-    min_confidence: int
-    enabled_strategies: frozenset[str]
-    language: str
 
-    @classmethod
-    def from_env(cls) -> "Config":
-        token=os.getenv('TELEGRAM_BOT_TOKEN','').strip()
-        if not token: raise ValueError('TELEGRAM_BOT_TOKEN is required')
-        admins=_csv_ints(os.getenv('ADMIN_IDS',''))
-        if not admins: raise ValueError('ADMIN_IDS must contain at least one numeric Telegram ID')
-        payout=int(os.getenv('PAYOUT_THRESHOLD','80'))
-        if not 0 <= payout <= 100: raise ValueError('PAYOUT_THRESHOLD must be 0..100')
-        mode=os.getenv('PROVIDER_MODE','mock').lower()
-        if mode not in {'mock','pyquotex'}: raise ValueError('PROVIDER_MODE must be mock or pyquotex')
-        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-        tz=os.getenv('TIMEZONE','Indian/Maldives')
-        try: ZoneInfo(tz)
-        except ZoneInfoNotFoundError as exc: raise ValueError(f'Unknown TIMEZONE: {tz}') from exc
-        return cls(token,os.getenv('CHANNEL_ID','').strip(),os.getenv('CHANNEL_USERNAME','').strip(),
-          os.getenv('CHANNEL_URL','https://t.me/').strip(),os.getenv('SIGNAL_CHANNEL_ID','').strip(),admins,os.getenv('ADMIN_USERNAME','admin'),
-          os.getenv('FEEDBACK_CONTACT','not configured'),os.getenv('QUOTEX_REFERRAL_URL','https://example.com/'),payout,tz,
-          float(os.getenv('SCAN_INTERVAL_SECONDS','5')),os.getenv('DATABASE_PATH','data/stm_pro.sqlite3'),mode,
-          os.getenv('QUOTEX_EMAIL',''),os.getenv('QUOTEX_PASSWORD',''),int(os.getenv('MAX_CONCURRENCY','4')),
-          int(os.getenv('MAX_DATA_AGE_SECONDS','90')),int(os.getenv('COOLDOWN_HOURS','6')),
-          os.getenv('RECOVERY_CLASSIFICATION','false').lower()=='true',os.getenv('MOCK_MODE',mode=='mock' and 'true' or 'false').lower()=='true',
-          int(os.getenv('MIN_CONFIDENCE','65')),frozenset(x.strip().upper() for x in os.getenv('ENABLED_STRATEGIES','AI,STM,BLACK4X,OPX4O').split(',') if x.strip()),
-          os.getenv('LANGUAGE','en').lower())
+def get_int(name: str, default: int, minimum: int = 1) -> int:
+    """Read and validate an integer environment variable."""
+    raw = get_env(name, str(default))
+
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"Configuration error: {name} must be an integer.")
+
+    if value < minimum:
+        raise ValueError(
+            f"Configuration error: {name} must be >= {minimum}."
+        )
+
+    return value
+
+
+def get_float(
+    name: str,
+    default: float,
+    minimum: float = 0.0,
+    maximum: float | None = None,
+) -> float:
+    """Read and validate a numeric environment variable."""
+    raw = get_env(name, str(default))
+
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"Configuration error: {name} must be numeric.")
+
+    if value < minimum:
+        raise ValueError(
+            f"Configuration error: {name} must be >= {minimum}."
+        )
+
+    if maximum is not None and value > maximum:
+        raise ValueError(
+            f"Configuration error: {name} must be <= {maximum}."
+        )
+
+    return value
+
+
+def get_bool(name: str, default: bool = False) -> bool:
+    """Parse a boolean environment variable."""
+    raw = get_env(name, str(default)).lower()
+
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+
+    if raw in {"0", "false", "no", "off"}:
+        return False
+
+    raise ValueError(
+        f"Configuration error: {name} must be true or false."
+    )
+
+
+def get_admin_ids() -> frozenset[int]:
+    """Parse comma-separated numeric Telegram admin IDs."""
+    raw = get_env("ADMIN_IDS")
+
+    if not raw:
+        return frozenset()
+
+    try:
+        ids = {int(item.strip()) for item in raw.split(",") if item.strip()}
+    except ValueError:
+        raise ValueError(
+            "Configuration error: ADMIN_IDS must contain numeric IDs."
+        )
+
+    if any(admin_id <= 0 for admin_id in ids):
+        raise ValueError(
+            "Configuration error: ADMIN_IDS must contain positive IDs."
+        )
+
+    return frozenset(ids)
+
+
+# ==================================================
+# Telegram configuration
+# ==================================================
+
+TELEGRAM_BOT_TOKEN = get_env("TELEGRAM_BOT_TOKEN")
+
+CHANNEL_ID = get_env("CHANNEL_ID")
+CHANNEL_USERNAME = get_env("CHANNEL_USERNAME").lstrip("@")
+
+ADMIN_IDS = get_admin_ids()
+ADMIN_USERNAME = get_env("ADMIN_USERNAME").lstrip("@")
+
+FEEDBACK_CONTACT = get_env("FEEDBACK_CONTACT")
+REFERRAL_URL = get_env("REFERRAL_URL")
+
+# ==================================================
+# Market and signal configuration
+# ==================================================
+
+PAYOUT_THRESHOLD = get_float(
+    "PAYOUT_THRESHOLD",
+    default=80.0,
+    minimum=0.0,
+    maximum=100.0,
+)
+
+TIMEZONE = get_env("TIMEZONE", "UTC")
+
+try:
+    DISPLAY_TIMEZONE = ZoneInfo(TIMEZONE)
+except (ZoneInfoNotFoundError, ValueError):
+    raise ValueError(
+        "Configuration error: TIMEZONE must be a valid IANA timezone."
+    )
+
+SCAN_INTERVAL = get_int(
+    "SCAN_INTERVAL",
+    default=5,
+    minimum=1,
+)
+
+SIGNAL_LEAD_SECONDS = get_int(
+    "SIGNAL_LEAD_SECONDS",
+    default=5,
+    minimum=1,
+)
+
+EXPIRY_SECONDS = get_int(
+    "EXPIRY_SECONDS",
+    default=60,
+    minimum=1,
+)
+
+# ==================================================
+# Database configuration
+# ==================================================
+
+DATABASE_PATH = Path(
+    get_env("DATABASE_PATH", str(BASE_DIR / "data" / "stm_pro_bot.db"))
+).expanduser()
+
+if not DATABASE_PATH.is_absolute():
+    DATABASE_PATH = (BASE_DIR / DATABASE_PATH).resolve()
+
+# ==================================================
+# Provider configuration
+# ==================================================
+
+PROVIDER_MODE = get_env("PROVIDER_MODE", "mock").lower()
+
+if PROVIDER_MODE not in {"mock", "quotex"}:
+    raise ValueError(
+        "Configuration error: PROVIDER_MODE must be mock or quotex."
+    )
+
+QUOTEX_EMAIL = get_env("QUOTEX_EMAIL")
+QUOTEX_PASSWORD = get_env("QUOTEX_PASSWORD")
+QUOTEX_BASE_URL = get_env("QUOTEX_BASE_URL")
+
+PROVIDER_TIMEOUT = get_int(
+    "PROVIDER_TIMEOUT",
+    default=20,
+    minimum=1,
+)
+
+PROVIDER_MAX_RETRIES = get_int(
+    "PROVIDER_MAX_RETRIES",
+    default=3,
+    minimum=0,
+)
+
+MAX_CONCURRENT_SCANS = get_int(
+    "MAX_CONCURRENT_SCANS",
+    default=5,
+    minimum=1,
+)
+
+CANDLE_LOOKBACK = get_int(
+    "CANDLE_LOOKBACK",
+    default=200,
+    minimum=60,
+)
+
+MAX_CANDLE_AGE_SECONDS = get_int(
+    "MAX_CANDLE_AGE_SECONDS",
+    default=90,
+    minimum=1,
+)
+
+# ==================================================
+# Strategy configuration
+# ==================================================
+
+ENABLE_AI_STRATEGY = get_bool("ENABLE_AI_STRATEGY", True)
+ENABLE_STM_STRATEGY = get_bool("ENABLE_STM_STRATEGY", True)
+ENABLE_RANDOM_STRATEGY = get_bool("ENABLE_RANDOM_STRATEGY", False)
+ENABLE_BLACK4X = get_bool("ENABLE_BLACK4X", True)
+ENABLE_OPX4O = get_bool("ENABLE_OPX4O", True)
+
+STM_PVIP_PRECEDING_CANDLES = get_int(
+    "STM_PVIP_PRECEDING_CANDLES",
+    default=3,
+    minimum=3,
+)
+
+if STM_PVIP_PRECEDING_CANDLES > 10:
+    raise ValueError(
+        "Configuration error: STM_PVIP_PRECEDING_CANDLES must be between 3 and 10."
+    )
+
+STM_PVIP2_BODY_PERCENT = get_float(
+    "STM_PVIP2_BODY_PERCENT",
+    default=55.0,
+    minimum=1.0,
+    maximum=85.0,
+)
+
+AI_MIN_CONFIDENCE = get_float(
+    "AI_MIN_CONFIDENCE",
+    default=70.0,
+    minimum=0.0,
+    maximum=100.0,
+)
+
+# ==================================================
+# Risk and session configuration
+# ==================================================
+
+LOSS_STREAK_LIMIT = get_int(
+    "LOSS_STREAK_LIMIT",
+    default=2,
+    minimum=1,
+)
+
+COOLDOWN_HOURS = get_int(
+    "COOLDOWN_HOURS",
+    default=6,
+    minimum=1,
+)
+
+ENABLE_MTG_CLASSIFICATION = get_bool(
+    "ENABLE_MTG_CLASSIFICATION",
+    default=False,
+)
+
+MAX_RECOVERY_ATTEMPTS = 1 if ENABLE_MTG_CLASSIFICATION else 0
+
+# ==================================================
+# Random strategy configuration
+# ==================================================
+
+RANDOM_STRATEGY_TEST_ONLY = get_bool(
+    "RANDOM_STRATEGY_TEST_ONLY",
+    default=True,
+)
+
+# ==================================================
+# Startup validation
+# ==================================================
+
+def validate_config() -> None:
+    """Validate required configuration before starting the bot."""
+
+    if not TELEGRAM_BOT_TOKEN:
+        raise ValueError(
+            "Configuration error: TELEGRAM_BOT_TOKEN is required"
+        )
+
+    if not ADMIN_IDS:
+        raise ValueError(
+            "Configuration error: ADMIN_IDS must contain at least one admin ID"
+        )
+
+    if not CHANNEL_ID and not CHANNEL_USERNAME:
+        raise ValueError(
+            "Configuration error: CHANNEL_ID or CHANNEL_USERNAME is required"
+        )
+
+    if PROVIDER_MODE == "quotex":
+        if not QUOTEX_EMAIL or not QUOTEX_PASSWORD:
+            raise ValueError(
+                "Configuration error: QUOTEX_EMAIL and QUOTEX_PASSWORD "
+                "are required when PROVIDER_MODE=quotex"
+            )
+
+    if ENABLE_RANDOM_STRATEGY and not RANDOM_STRATEGY_TEST_ONLY:
+        raise ValueError(
+            "Configuration error: random signals must remain test-only."
+        )
+
+    try:
+        DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        raise ValueError(
+            "Configuration error: cannot create the database directory."
+        )
+
+
+if __name__ == "__main__":
+    validate_config()
+    print("STM PRO BOT configuration is valid.")
