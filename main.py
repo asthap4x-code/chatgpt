@@ -23,7 +23,7 @@ async def post_shutdown(app):
  if provider:await provider.close()
 def main():
  configure_logging();log=logging.getLogger(__name__)
- try:cfg=Config.from_env()
+ try:cfg=config.from_env()
  except Exception as e:raise SystemExit(f'Configuration error: {e}')
  db=Database(cfg.database_path);provider=MockProvider() if cfg.provider_mode=='mock' else PyQuotexAdapter(cfg.quotex_email,cfg.quotex_password)
  engine=SignalEngine(cfg,db,provider);results=ResultEngine(db,provider,cfg);scanner=MarketScanner(provider,engine,cfg)
