@@ -372,8 +372,4 @@ class config:
     RANDOM_STRATEGY_TEST_ONLY = RANDOM_STRATEGY_TEST_ONLY
 
     validate = staticmethod(validate_config)
-    class config:
-    @classmethod
-    def from_env(cls):
-        validate_config()
-        return cls()
+    
