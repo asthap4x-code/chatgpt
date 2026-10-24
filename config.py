@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
@@ -10,23 +11,27 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Load local .env without overriding hosting secrets.
+# Load .env without overriding hosting environment variables.
 load_dotenv(BASE_DIR / ".env", override=False)
 
 
+# ==================================================
+# Environment helpers
+# ==================================================
+
 def get_env(name: str, default: str = "") -> str:
-    """Read and normalize an environment variable."""
     return os.getenv(name, default).strip()
 
 
 def get_int(name: str, default: int, minimum: int = 1) -> int:
-    """Read and validate an integer environment variable."""
     raw = get_env(name, str(default))
 
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        raise ValueError(f"Configuration error: {name} must be an integer.")
+        raise ValueError(
+            f"Configuration error: {name} must be an integer."
+        )
 
     if value < minimum:
         raise ValueError(
@@ -42,13 +47,14 @@ def get_float(
     minimum: float = 0.0,
     maximum: float | None = None,
 ) -> float:
-    """Read and validate a numeric environment variable."""
     raw = get_env(name, str(default))
 
     try:
         value = float(raw)
     except (TypeError, ValueError):
-        raise ValueError(f"Configuration error: {name} must be numeric.")
+        raise ValueError(
+            f"Configuration error: {name} must be numeric."
+        )
 
     if value < minimum:
         raise ValueError(
@@ -64,7 +70,6 @@ def get_float(
 
 
 def get_bool(name: str, default: bool = False) -> bool:
-    """Parse a boolean environment variable."""
     raw = get_env(name, str(default)).lower()
 
     if raw in {"1", "true", "yes", "on"}:
@@ -79,14 +84,17 @@ def get_bool(name: str, default: bool = False) -> bool:
 
 
 def get_admin_ids() -> frozenset[int]:
-    """Parse comma-separated numeric Telegram admin IDs."""
     raw = get_env("ADMIN_IDS")
 
     if not raw:
         return frozenset()
 
     try:
-        ids = {int(item.strip()) for item in raw.split(",") if item.strip()}
+        ids = {
+            int(item.strip())
+            for item in raw.split(",")
+            if item.strip()
+        }
     except ValueError:
         raise ValueError(
             "Configuration error: ADMIN_IDS must contain numeric IDs."
@@ -114,6 +122,7 @@ ADMIN_USERNAME = get_env("ADMIN_USERNAME").lstrip("@")
 
 FEEDBACK_CONTACT = get_env("FEEDBACK_CONTACT")
 REFERRAL_URL = get_env("REFERRAL_URL")
+
 
 # ==================================================
 # Market and signal configuration
@@ -153,16 +162,21 @@ EXPIRY_SECONDS = get_int(
     minimum=1,
 )
 
+
 # ==================================================
 # Database configuration
 # ==================================================
 
 DATABASE_PATH = Path(
-    get_env("DATABASE_PATH", str(BASE_DIR / "data" / "stm_pro_bot.db"))
+    get_env(
+        "DATABASE_PATH",
+        str(BASE_DIR / "data" / "stm_pro_bot.db"),
+    )
 ).expanduser()
 
 if not DATABASE_PATH.is_absolute():
     DATABASE_PATH = (BASE_DIR / DATABASE_PATH).resolve()
+
 
 # ==================================================
 # Provider configuration
@@ -209,15 +223,35 @@ MAX_CANDLE_AGE_SECONDS = get_int(
     minimum=1,
 )
 
+
 # ==================================================
 # Strategy configuration
 # ==================================================
 
-ENABLE_AI_STRATEGY = get_bool("ENABLE_AI_STRATEGY", True)
-ENABLE_STM_STRATEGY = get_bool("ENABLE_STM_STRATEGY", True)
-ENABLE_RANDOM_STRATEGY = get_bool("ENABLE_RANDOM_STRATEGY", False)
-ENABLE_BLACK4X = get_bool("ENABLE_BLACK4X", True)
-ENABLE_OPX4O = get_bool("ENABLE_OPX4O", True)
+ENABLE_AI_STRATEGY = get_bool(
+    "ENABLE_AI_STRATEGY",
+    True,
+)
+
+ENABLE_STM_STRATEGY = get_bool(
+    "ENABLE_STM_STRATEGY",
+    True,
+)
+
+ENABLE_RANDOM_STRATEGY = get_bool(
+    "ENABLE_RANDOM_STRATEGY",
+    False,
+)
+
+ENABLE_BLACK4X = get_bool(
+    "ENABLE_BLACK4X",
+    True,
+)
+
+ENABLE_OPX4O = get_bool(
+    "ENABLE_OPX4O",
+    True,
+)
 
 STM_PVIP_PRECEDING_CANDLES = get_int(
     "STM_PVIP_PRECEDING_CANDLES",
@@ -227,7 +261,8 @@ STM_PVIP_PRECEDING_CANDLES = get_int(
 
 if STM_PVIP_PRECEDING_CANDLES > 10:
     raise ValueError(
-        "Configuration error: STM_PVIP_PRECEDING_CANDLES must be between 3 and 10."
+        "Configuration error: STM_PVIP_PRECEDING_CANDLES "
+        "must be between 3 and 10."
     )
 
 STM_PVIP2_BODY_PERCENT = get_float(
@@ -243,6 +278,7 @@ AI_MIN_CONFIDENCE = get_float(
     minimum=0.0,
     maximum=100.0,
 )
+
 
 # ==================================================
 # Risk and session configuration
@@ -265,7 +301,10 @@ ENABLE_MTG_CLASSIFICATION = get_bool(
     default=False,
 )
 
-MAX_RECOVERY_ATTEMPTS = 1 if ENABLE_MTG_CLASSIFICATION else 0
+MAX_RECOVERY_ATTEMPTS = (
+    1 if ENABLE_MTG_CLASSIFICATION else 0
+)
+
 
 # ==================================================
 # Random strategy configuration
@@ -276,102 +315,157 @@ RANDOM_STRATEGY_TEST_ONLY = get_bool(
     default=True,
 )
 
+
 # ==================================================
-# Startup validation
+# Configuration validation
 # ==================================================
 
 def validate_config() -> None:
-    """Validate required configuration before starting the bot."""
+    """Validate required settings before bot startup."""
 
     if not TELEGRAM_BOT_TOKEN:
         raise ValueError(
-            "Configuration error: TELEGRAM_BOT_TOKEN is required"
+            "Configuration error: TELEGRAM_BOT_TOKEN is required."
         )
 
     if not ADMIN_IDS:
         raise ValueError(
-            "Configuration error: ADMIN_IDS must contain at least one admin ID"
+            "Configuration error: ADMIN_IDS must contain "
+            "at least one admin ID."
         )
 
     if not CHANNEL_ID and not CHANNEL_USERNAME:
         raise ValueError(
-            "Configuration error: CHANNEL_ID or CHANNEL_USERNAME is required"
+            "Configuration error: CHANNEL_ID or "
+            "CHANNEL_USERNAME is required."
         )
 
     if PROVIDER_MODE == "quotex":
         if not QUOTEX_EMAIL or not QUOTEX_PASSWORD:
             raise ValueError(
-                "Configuration error: QUOTEX_EMAIL and QUOTEX_PASSWORD "
-                "are required when PROVIDER_MODE=quotex"
+                "Configuration error: QUOTEX_EMAIL and "
+                "QUOTEX_PASSWORD are required when "
+                "PROVIDER_MODE=quotex."
             )
 
     if ENABLE_RANDOM_STRATEGY and not RANDOM_STRATEGY_TEST_ONLY:
         raise ValueError(
-            "Configuration error: random signals must remain test-only."
+            "Configuration error: random signals must remain "
+            "test-only."
         )
 
     try:
-        DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    except OSError:
+        DATABASE_PATH.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+    except OSError as exc:
         raise ValueError(
             "Configuration error: cannot create the database directory."
-        )
+        ) from exc
 
+
+# ==================================================
+# Lowercase settings factory
+# ==================================================
+
+def from_env():
+    """
+    Validate configuration and return a settings object.
+
+    main.py uses lowercase attributes such as:
+    cfg.bot_token
+    cfg.database_path
+    cfg.provider_mode
+    """
+
+    validate_config()
+
+    enabled_strategies = {
+        name
+        for name, enabled in {
+            "AI": ENABLE_AI_STRATEGY,
+            "STM": ENABLE_STM_STRATEGY,
+            "BLACK4X": ENABLE_BLACK4X,
+            "OPX4O": ENABLE_OPX4O,
+            "RANDOM": ENABLE_RANDOM_STRATEGY,
+        }.items()
+        if enabled
+    }
+
+    signal_channel_id = (
+        CHANNEL_ID
+        if CHANNEL_ID
+        else f"@{CHANNEL_USERNAME}"
+        if CHANNEL_USERNAME
+        else ""
+    )
+
+    return SimpleNamespace(
+        # Telegram
+        bot_token=TELEGRAM_BOT_TOKEN,
+        channel_id=CHANNEL_ID,
+        channel_username=CHANNEL_USERNAME,
+        signal_channel_id=signal_channel_id,
+        admin_ids=ADMIN_IDS,
+        admin_username=ADMIN_USERNAME,
+        feedback_contact=FEEDBACK_CONTACT,
+        referral_url=REFERRAL_URL,
+
+        # Market and signals
+        payout_threshold=PAYOUT_THRESHOLD,
+        timezone=TIMEZONE,
+        display_timezone=DISPLAY_TIMEZONE,
+        scan_interval=SCAN_INTERVAL,
+        signal_lead_seconds=SIGNAL_LEAD_SECONDS,
+        expiry_seconds=EXPIRY_SECONDS,
+
+        # Database
+        database_path=str(DATABASE_PATH),
+
+        # Provider
+        provider_mode=PROVIDER_MODE,
+        quotex_email=QUOTEX_EMAIL,
+        quotex_password=QUOTEX_PASSWORD,
+        quotex_base_url=QUOTEX_BASE_URL,
+        provider_timeout=PROVIDER_TIMEOUT,
+        provider_max_retries=PROVIDER_MAX_RETRIES,
+        max_concurrent_scans=MAX_CONCURRENT_SCANS,
+        candle_lookback=CANDLE_LOOKBACK,
+        max_candle_age_seconds=MAX_CANDLE_AGE_SECONDS,
+
+        # Strategies
+        enabled_strategies=enabled_strategies,
+        enable_ai_strategy=ENABLE_AI_STRATEGY,
+        enable_stm_strategy=ENABLE_STM_STRATEGY,
+        enable_random_strategy=ENABLE_RANDOM_STRATEGY,
+        enable_black4x=ENABLE_BLACK4X,
+        enable_opx4o=ENABLE_OPX4O,
+        stm_pvip_preceding_candles=STM_PVIP_PRECEDING_CANDLES,
+        stm_pvip2_body_percent=STM_PVIP2_BODY_PERCENT,
+        ai_min_confidence=AI_MIN_CONFIDENCE,
+
+        # Risk and recovery
+        loss_streak_limit=LOSS_STREAK_LIMIT,
+        cooldown_hours=COOLDOWN_HOURS,
+        enable_mtg_classification=ENABLE_MTG_CLASSIFICATION,
+        max_recovery_attempts=MAX_RECOVERY_ATTEMPTS,
+        random_strategy_test_only=RANDOM_STRATEGY_TEST_ONLY,
+    )
+
+
+# ==================================================
+# Standalone validation
+# ==================================================
 
 if __name__ == "__main__":
     validate_config()
+    settings = from_env()
+
     print("STM PRO BOT configuration is valid.")
-class config:
-    TELEGRAM_BOT_TOKEN = TELEGRAM_BOT_TOKEN
-
-    CHANNEL_ID = CHANNEL_ID
-    CHANNEL_USERNAME = CHANNEL_USERNAME
-
-    ADMIN_IDS = ADMIN_IDS
-    ADMIN_USERNAME = ADMIN_USERNAME
-
-    FEEDBACK_CONTACT = FEEDBACK_CONTACT
-    REFERRAL_URL = REFERRAL_URL
-
-    PAYOUT_THRESHOLD = PAYOUT_THRESHOLD
-    TIMEZONE = TIMEZONE
-    DISPLAY_TIMEZONE = DISPLAY_TIMEZONE
-
-    SCAN_INTERVAL = SCAN_INTERVAL
-    SIGNAL_LEAD_SECONDS = SIGNAL_LEAD_SECONDS
-    EXPIRY_SECONDS = EXPIRY_SECONDS
-
-    DATABASE_PATH = DATABASE_PATH
-
-    PROVIDER_MODE = PROVIDER_MODE
-    QUOTEX_EMAIL = QUOTEX_EMAIL
-    QUOTEX_PASSWORD = QUOTEX_PASSWORD
-    QUOTEX_BASE_URL = QUOTEX_BASE_URL
-
-    PROVIDER_TIMEOUT = PROVIDER_TIMEOUT
-    PROVIDER_MAX_RETRIES = PROVIDER_MAX_RETRIES
-    MAX_CONCURRENT_SCANS = MAX_CONCURRENT_SCANS
-    CANDLE_LOOKBACK = CANDLE_LOOKBACK
-    MAX_CANDLE_AGE_SECONDS = MAX_CANDLE_AGE_SECONDS
-
-    ENABLE_AI_STRATEGY = ENABLE_AI_STRATEGY
-    ENABLE_STM_STRATEGY = ENABLE_STM_STRATEGY
-    ENABLE_RANDOM_STRATEGY = ENABLE_RANDOM_STRATEGY
-    ENABLE_BLACK4X = ENABLE_BLACK4X
-    ENABLE_OPX4O = ENABLE_OPX4O
-
-    STM_PVIP_PRECEDING_CANDLES = STM_PVIP_PRECEDING_CANDLES
-    STM_PVIP2_BODY_PERCENT = STM_PVIP2_BODY_PERCENT
-    AI_MIN_CONFIDENCE = AI_MIN_CONFIDENCE
-
-    LOSS_STREAK_LIMIT = LOSS_STREAK_LIMIT
-    COOLDOWN_HOURS = COOLDOWN_HOURS
-    ENABLE_MTG_CLASSIFICATION = ENABLE_MTG_CLASSIFICATION
-    MAX_RECOVERY_ATTEMPTS = MAX_RECOVERY_ATTEMPTS
-
-    RANDOM_STRATEGY_TEST_ONLY = RANDOM_STRATEGY_TEST_ONLY
-
-    validate = staticmethod(validate_config)
-def from_env():
-    validate_config()
-    return __import__(__name__)
+    print(f"Provider mode: {settings.provider_mode}")
+    print(f"Database path: {settings.database_path}")
+    print(
+        "Enabled strategies: "
+        + ", ".join(sorted(settings.enabled_strategies))
+    )
